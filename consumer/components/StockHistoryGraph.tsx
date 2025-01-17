@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { useEffect, useState } from "react";
 import {
   CartesianGrid,
@@ -10,16 +11,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "./ui/card";
 
 import axios from "axios";
+import { Loader } from "lucide-react";
 import { Button } from "./ui/button";
+import { useTheme } from "next-themes";
 
 interface HistoricalDataPoint {
   timestamp: number;
@@ -31,23 +28,23 @@ type TimeRange = "year" | "3months" | "month" | "week" | "today";
 
 const timeRanges: { label: string; value: TimeRange }[] = [
   {
-    label: "Today",
+    label: "1D",
     value: "today",
   },
   {
-    label: "1 Week",
+    label: "1W",
     value: "week",
   },
   {
-    label: "Month",
+    label: "1M",
     value: "month",
   },
   {
-    label: "3 Months",
+    label: "3M",
     value: "3months",
   },
   {
-    label: "Year",
+    label: "1Y",
     value: "year",
   },
 ];
@@ -59,7 +56,7 @@ const StockHistoryGraph = () => {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const { theme } = useTheme();
 
   // This calculates the from and to timestamps for the api depending on which filter the user choses
   const calculateTimeRange = (
@@ -91,7 +88,6 @@ const StockHistoryGraph = () => {
     return { from, to: now };
   };
 
-
   // This function aggregates the data based on which time range was chjoses
   const aggregateData = (
     data: HistoricalDataPoint[],
@@ -102,7 +98,7 @@ const StockHistoryGraph = () => {
       const interval = 15 * 60 * 1000; // 15 minutes in milliseconds
       const groupedData = new Map<number, HistoricalDataPoint>();
 
-      // This helps to show only every 15 minutes 
+      // This helps to show only every 15 minutes
       data.forEach((point) => {
         const bucket = Math.floor(point.timestamp / interval) * interval;
         // Keep the last data point within each 15-minute interval
@@ -164,76 +160,157 @@ const StockHistoryGraph = () => {
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange]);
+  console.log(historicalData);
   return (
-    <Card className="w-full mt-6">
+    <Card className="w-full border-none">
       <CardHeader>
-        <CardTitle>Stock Price History</CardTitle>
         <CardDescription>Updates every 15 min.</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="flex gap-1  justify-end mb-4">
+      <CardContent className="p-0">
+        {error && <p className="text-red-500 text-center">{error}</p>}
+
+        <div className="h-[500px]">
+          {loading ? (
+            <div className="flex justify-center items-center h-80">
+              <Loader className=" animate-spin" />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={500}>
+              <LineChart margin={{ left: 0, right: 0 }} data={historicalData}>
+                <CartesianGrid vertical={false} className=" opacity-15" />
+                <XAxis tick={false} dataKey="timestamp" stroke="#555" />
+                <YAxis
+                  orientation="right"
+                  domain={["auto", "auto"]} // Y-axis domain automatic
+                  tickFormatter={(tick) => `£${tick}`}
+                  stroke="#555"
+                />
+                <Tooltip
+                  labelFormatter={(label) => format(new Date(label), "P k:m")}
+                  formatter={(value: number) => [
+                    `£${value.toFixed(2)}`,
+                    "Price",
+                  ]} // Format Y-axis ticks with sign
+                  contentStyle={{
+                    backgroundColor: theme === "dark" ? "white" : "black",
+                    border: "none",
+                    color: theme === "dark" ? "black" : "white",
+                    borderRadius: 20,
+                  }}
+                />
+                <Line
+                  type="linear"
+                  dataKey="price"
+                  stroke="#60a5fa"
+                  strokeWidth={2}
+                  dot={false}
+                  fill="none"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div className="grid-cols-5 grid px-2  ">
           {timeRanges.map((range) => (
             <Button
               key={range.value}
               onClick={() => setTimeRange(range.value)}
-              className={`${
+              className={`rounded-full mb-4 ${
                 timeRange === range.value
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  ? "dark:bg-gray-900 bg-gray-100 dark:hover:bg-gray-900 hover:bg-gray-100 dark:text-white text-black font-semibold"
+                  : "bg-transparent hover:bg-transparent dark:text-white text-black transition-colors"
               } `}
             >
               {range.label}
             </Button>
           ))}
         </div>
-
-        {error && <p className="text-red-500 text-center">{error}</p>}
-
-        {loading ? (
-          <div className="flex justify-center items-center h-80">
-            <div className="loader"></div>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={historicalData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={(tick) => {
-                  const date = new Date(tick); // This converts timestamp to date object
-                  return timeRange === "today"
-                    ? `${date.getHours().toString().padStart(2, "0")}:${date
-                        .getMinutes()
-                        .toString()
-                        .padStart(2, "0")}` // This is formated for the Today option HH:MM
-                    : `${date.getMonth() + 1}/${date.getDate()}`; // This is formated for the other options
-                }}
-                stroke="#555"
-              />
-              <YAxis
-                domain={["auto", "auto"]} // Y-axis domain automatic
-                tickFormatter={(tick) => `£${tick}`}
-                stroke="#555"
-              />
-              <Tooltip
-                labelFormatter={(label) => new Date(label).toLocaleString()}
-                formatter={(value: number) => [`£${value.toFixed(2)}`, "Price"]} // Format Y-axis ticks with sign
-                contentStyle={{ backgroundColor: "#f5f5f5", border: "none" }}
-              />
-              <Line
-                type="linear"
-                dataKey="price"
-                stroke="#4F46E5"
-                strokeWidth={2}
-                dot={false}
-                fill="none"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
       </CardContent>
     </Card>
   );
 };
+
+//   <ResponsiveContainer width="100%" height={300}>
+// <LineChart data={historicalData}>
+//   <CartesianGrid vertical={false} className=" opacity-15" />
+//   <XAxis
+//     dataKey="timestamp"
+//     tickFormatter={(tick) => {
+//       const date = new Date(tick); // This converts timestamp to date object
+//       return timeRange === "today"
+//         ? `${date.getHours().toString().padStart(2, "0")}:${date
+//             .getMinutes()
+//             .toString()
+//             .padStart(2, "0")}` // This is formated for the Today option HH:MM
+//         : `${date.getMonth() + 1}/${date.getDate()}`; // This is formated for the other options
+//     }}
+//     stroke="#555"
+//   />
+//   <YAxis
+//     domain={["auto", "auto"]} // Y-axis domain automatic
+//     tickFormatter={(tick) => `£${tick}`}
+//     stroke="#555"
+//   />
+//   <Tooltip
+//     labelFormatter={(label) => new Date(label).toLocaleString()}
+//     formatter={(value: number) => [`£${value.toFixed(2)}`, "Price"]} // Format Y-axis ticks with sign
+//     contentStyle={{ backgroundColor: "#f5f5f5", border: "none" }}
+//   />
+//   <Line
+//     type="linear"
+//     dataKey="price"
+//     stroke="#4F46E5"
+//     strokeWidth={2}
+//     dot={false}
+//     fill="none"
+//   />
+// </LineChart>
+// </ResponsiveContainer>
+
+{
+  /* <ChartContainer config={chartConfig}>
+<AreaChart
+  accessibilityLayer
+  data={historicalData}
+  margin={{
+    left: -20,
+    right: 12,
+  }}
+>
+  <CartesianGrid vertical={false} />
+  <XAxis
+    dataKey="timestamp"
+    tickLine={false}
+    axisLine={false}
+    tickMargin={8}
+  />
+  <YAxis
+    tickLine={false}
+    axisLine={false}
+    tickMargin={8}
+    tickCount={5}
+    tickFormatter={(tick) => `£${tick}`}
+  />
+  <ChartTooltip
+    cursor={false}
+    content={<ChartTooltipContent nameKey="timestamp" />}
+  />
+  {/* <Tooltip
+    labelFormatter={(label) => new Date(label).toLocaleString()}
+    formatter={(value: number) => [`£${value.toFixed(2)}`, "Price"]} // Format Y-axis ticks with sign
+    contentStyle={{ backgroundColor: "#f5f5f5", border: "none" }}
+  /> */
+}
+
+//   <Area
+//     dataKey="price"
+//     type="linear"
+//     fill="var(--color-desktop)"
+//     fillOpacity={0.1}
+//     stroke="var(--color-desktop)"
+//     stackId="a"
+//   />
+// </AreaChart>
+// </ChartContainer> */}
 
 export default StockHistoryGraph;
